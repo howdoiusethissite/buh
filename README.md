@@ -8,7 +8,11 @@ Fabric mod for Minecraft 26.3. Every player gets a **Terraform Wand** (an enchan
 - **Sneak + right-click** clears a pending first corner.
 - `/terraform undo` reverts your last terraform. `/terraform wand` gives you another wand.
 
-Limits: platform sides up to 96 blocks. Blocks with block entities (chests, etc.) and unbreakable blocks are left untouched.
+**Removed blocks** are collected into chests placed on the platform (rows along the box, one aisle between rows). Stacks that don't fit are reported.
+
+**Player builds are protected.** Minecraft doesn't record who placed a block, so the wand only touches what looks natural (dirt, sand, stone, ores, plants, wild leaves, trees). Any column that contains anything else (planks, glass, torches, chests, placed leaves, bare log pillars...) is left completely untouched, along with anything buried beneath it. Limitations: a roof or wall made of plain dirt/stone is indistinguishable from terrain, and a hut sitting on the platform makes its columns stay at their old height.
+
+Limits: platform sides up to 96 blocks. Blocks with block entities and unbreakable blocks are left untouched.
 
 Tunables live at the top of `TerraformJob.java` (`MARGIN`, `MAX_SIDE`).
 

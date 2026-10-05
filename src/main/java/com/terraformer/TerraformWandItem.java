@@ -49,7 +49,11 @@ public class TerraformWandItem extends Item {
 		Selections.clearFirstCorner(player);
 		Selections.rememberForUndo(player, serverLevel, outcome.changes());
 		Selections.actionBar(player, "Terraformed " + outcome.sizeX() + "x" + outcome.sizeZ() + " at y="
-			+ first.getY() + " (" + outcome.changes().size() + " blocks changed). /terraform undo to revert.");
+			+ first.getY() + ": " + outcome.changes().size() + " blocks changed, " + outcome.chests()
+			+ " chest(s) of removed blocks on the platform"
+			+ (outcome.lostStacks() > 0 ? " (" + outcome.lostStacks() + " stacks did not fit)" : "")
+			+ (outcome.protectedColumns() > 0 ? ", " + outcome.protectedColumns() + " columns with builds left untouched" : "")
+			+ ". /terraform undo to revert.");
 		return InteractionResult.CONSUME;
 	}
 

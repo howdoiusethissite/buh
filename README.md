@@ -10,7 +10,7 @@ Fabric mod for Minecraft 26.3. Every player gets a **Terraform Wand** (an enchan
 
 **Removed blocks** are collected into chests placed on the platform (rows along the box, one aisle between rows). Stacks that don't fit are reported.
 
-**Player builds are protected.** Minecraft doesn't record who placed a block, so the wand only touches what looks natural (dirt, sand, stone, ores, plants, wild leaves, trees). Any column that contains anything else (planks, glass, torches, chests, placed leaves, bare log pillars...) is left completely untouched, along with anything buried beneath it. Limitations: a roof or wall made of plain dirt/stone is indistinguishable from terrain, and a hut sitting on the platform makes its columns stay at their old height.
+**Player builds are protected.** Minecraft doesn't record who placed a block, so the wand only touches what looks natural (dirt, sand, stone, ores, netherrack, soul sand/soil, nylium, end stone, plants, wild leaves, trees, huge fungi). Any column that contains anything else (planks, glass, torches, chests, placed leaves, bare log pillars...) is left completely untouched, along with anything buried beneath it. Limitations: a roof or wall made of plain dirt/stone is indistinguishable from terrain, and a hut sitting on the platform makes its columns stay at their old height.
 
 Limits: platform sides up to 96 blocks. Blocks with block entities and unbreakable blocks are left untouched.
 
@@ -23,3 +23,7 @@ JDK 25 required: `./gradlew build`. Jar lands in `build/libs/`. Run the dev clie
 ## License
 
 CC0-1.0 (from the Fabric template).
+
+## Dimensions
+
+Works in the Overworld, Nether and End. The Nether has a bedrock roof, so there the wand looks for the surface nearest the platform height and carves up to 16 blocks of headroom (`NETHER_HEADROOM`) where the platform cuts into solid rock. The End's obsidian pillars count as builds and are left alone.

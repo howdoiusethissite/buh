@@ -10,6 +10,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LiquidBlock;
@@ -34,6 +35,8 @@ public final class TerraformJob {
 	public static final int MAX_SIDE = 96;
 	/** Update clients, skip neighbour updates (no physics/drop storm while editing thousands of blocks). */
 	public static final int FLAGS = 2;
+	/** In the Nether, how far above the platform height the ground search looks for open space. */
+	private static final int NETHER_HEADROOM = 16;
 	private static final int CHEST_SLOTS = 27;
 
 	public record Change(BlockPos pos, BlockState oldState) {
@@ -89,29 +92,74 @@ public final class TerraformJob {
 	private void processColumn(int x, int z, int levelY, int allowed) {
 		int minY = level.getMinY();
 		int maxY = level.getMaxY();
-		// First empty Y above the highest block (leaves, fluids included).
-		int top = Math.min(level.getHeight(Heightmap.Types.WORLD_SURFACE, x, z), maxY);
 
-		// Walk down through air, water, plants and natural trees to the ground. Hitting anything else
-		// (planks, glass, torches, a placed chest...) means a player build: leave the column alone.
 		int ground = minY - 1;
+		int top;
 		BlockState groundState = null;
-		for (int y = top - 1; y >= minY; y--) {
-			BlockPos p = pos.set(x, y, z);
-			BlockState state = level.getBlockState(p);
-			if (isPassable(p, state)) {
-				continue;
+		if (level.dimension() == Level.NETHER) {
+			// The Nether has a bedrock roof, so the heightmap is useless. Instead look for the surface
+			// nearest the platform height, with a limited amount of headroom above it.
+			int cap = Math.min(maxY - 1, levelY + NETHER_HEADROOM);
+			int y = Math.max(minY, Math.min(levelY, cap));
+			BlockState here = level.getBlockState(pos.set(x, y, z));
+			if (isPassable(pos, here)) {
+				for (int g = y - 1; g >= minY; g--) {
+					BlockState state = level.getBlockState(pos.set(x, g, z));
+					if (isPassable(pos, state)) {
+						continue;
+					}
+					if (isNaturalTerrain(state, false)) {
+						ground = g;
+						groundState = state;
+					}
+					break;
+				}
+			} else if (isNaturalTerrain(here, false)) {
+				// Inside rock: walk up to the first opening, or to the headroom limit.
+				int g = y;
+				while (g + 1 < cap) {
+					BlockState above = level.getBlockState(pos.set(x, g + 1, z));
+					if (isPassable(pos, above)) {
+						break;
+					}
+					g++;
+				}
+				ground = g;
+				groundState = level.getBlockState(pos.set(x, g, z));
 			}
-			if (isNaturalTerrain(state, false)) {
-				ground = y;
-				groundState = state;
-			} else {
-				protectedColumns++;
+			if (groundState == null || !isNaturalTerrain(groundState, false)) {
+				if (ground >= minY) {
+					protectedColumns++;
+				}
+				return;
 			}
-			break;
-		}
-		if (groundState == null) {
-			return; // void column, or protected
+			top = ground + 1;
+			while (top < cap && isPassable(pos.set(x, top, z), level.getBlockState(pos))) {
+				top++;
+			}
+		} else {
+			// First empty Y above the highest block (leaves, fluids included).
+			top = Math.min(level.getHeight(Heightmap.Types.WORLD_SURFACE, x, z), maxY);
+
+			// Walk down through air, water, plants and natural trees to the ground. Hitting anything else
+			// (planks, glass, torches, a placed chest...) means a player build: leave the column alone.
+			for (int y = top - 1; y >= minY; y--) {
+				BlockPos p = pos.set(x, y, z);
+				BlockState state = level.getBlockState(p);
+				if (isPassable(p, state)) {
+					continue;
+				}
+				if (isNaturalTerrain(state, false)) {
+					ground = y;
+					groundState = state;
+				} else {
+					protectedColumns++;
+				}
+				break;
+			}
+			if (groundState == null) {
+				return; // void column, or protected
+			}
 		}
 
 		int target;
@@ -160,7 +208,14 @@ public final class TerraformJob {
 			return true;
 		}
 		if (state.is(Blocks.KELP) || state.is(Blocks.KELP_PLANT) || state.is(Blocks.SEAGRASS)
-				|| state.is(Blocks.TALL_SEAGRASS)) {
+				|| state.is(Blocks.TALL_SEAGRASS)
+				// Nether and End vegetation
+				|| state.is(Blocks.CRIMSON_FUNGUS) || state.is(Blocks.WARPED_FUNGUS)
+				|| state.is(Blocks.WEEPING_VINES) || state.is(Blocks.WEEPING_VINES_PLANT)
+				|| state.is(Blocks.TWISTING_VINES) || state.is(Blocks.TWISTING_VINES_PLANT)
+				|| state.is(Blocks.NETHER_SPROUTS) || state.is(Blocks.NETHER_WART)
+				|| state.is(Blocks.CHORUS_PLANT) || state.is(Blocks.CHORUS_FLOWER)
+				|| isWartCanopy(state)) {
 			return true;
 		}
 		if (state.is(BlockTags.LEAVES)) {
@@ -170,6 +225,12 @@ public final class TerraformJob {
 		return state.is(BlockTags.LOGS) && isTreeLog(p);
 	}
 
+	/** Huge-fungus "leaves": nether/warped wart blocks and shroomlight. */
+	private static boolean isWartCanopy(BlockState state) {
+		return state.is(Blocks.NETHER_WART_BLOCK) || state.is(Blocks.WARPED_WART_BLOCK)
+				|| state.is(Blocks.SHROOMLIGHT);
+	}
+
 	/** A log counts as part of a tree if wild (non-persistent) leaves are within two blocks of it. */
 	private boolean isTreeLog(BlockPos logPos) {
 		BlockPos.MutableBlockPos q = new BlockPos.MutableBlockPos();
@@ -177,8 +238,8 @@ public final class TerraformJob {
 			for (int dy = -2; dy <= 2; dy++) {
 				for (int dz = -2; dz <= 2; dz++) {
 					BlockState s = level.getBlockState(q.set(logPos.getX() + dx, logPos.getY() + dy, logPos.getZ() + dz));
-					if (s.is(BlockTags.LEAVES) && s.hasProperty(BlockStateProperties.PERSISTENT)
-							&& !s.getValue(BlockStateProperties.PERSISTENT)) {
+					if (isWartCanopy(s) || (s.is(BlockTags.LEAVES) && s.hasProperty(BlockStateProperties.PERSISTENT)
+							&& !s.getValue(BlockStateProperties.PERSISTENT))) {
 						return true;
 					}
 				}
@@ -197,7 +258,11 @@ public final class TerraformJob {
 				|| block == Blocks.POWDER_SNOW || block == Blocks.ICE || block == Blocks.PACKED_ICE
 				|| block == Blocks.BLUE_ICE || block == Blocks.MUD || block == Blocks.MOSS_BLOCK
 				|| block == Blocks.CALCITE || block == Blocks.DRIPSTONE_BLOCK || block == Blocks.MAGMA_BLOCK
-				|| block == Blocks.COBWEB) {
+				|| block == Blocks.COBWEB
+				// Nether and End terrain
+				|| block == Blocks.SOUL_SAND || block == Blocks.SOUL_SOIL || block == Blocks.CRIMSON_NYLIUM
+				|| block == Blocks.WARPED_NYLIUM || block == Blocks.GLOWSTONE || block == Blocks.ANCIENT_DEBRIS
+				|| block == Blocks.END_STONE) {
 			return true;
 		}
 		if (allowSandstone && (block == Blocks.SANDSTONE || block == Blocks.RED_SANDSTONE)) {

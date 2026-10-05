@@ -56,10 +56,8 @@ public class Terraformer implements ModInitializer {
 	}
 
 	private static void giveWand(ServerPlayer player) {
-		ItemStack wand = new ItemStack(ModItems.TERRAFORM_WAND);
-		if (!player.getInventory().add(wand)) {
-			player.drop(wand, false);
-		}
+		// Adds to the inventory, or drops at the player's feet if it is full.
+		player.getInventory().placeItemBackInInventory(new ItemStack(ModItems.TERRAFORM_WAND));
 	}
 
 	public static Identifier id(String path) {

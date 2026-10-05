@@ -1,0 +1,27 @@
+{
+	"schemaVersion": 1,
+	"id": "terraformer",
+	"version": "${version}",
+	"name": "Terraformer",
+	"description": "Start with a Terraform Wand: mark two corners and the area is flattened, with a stepped slope blending it into the surrounding terrain.",
+	"authors": [
+		"wickedguhlinda"
+	],
+	"license": "CC0-1.0",
+	"icon": "assets/terraformer/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.terraformer.Terraformer"
+		],
+		"client": [
+			"com.terraformer.client.TerraformerClient"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.3",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}

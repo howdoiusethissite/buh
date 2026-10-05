@@ -9,6 +9,7 @@ import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,8 +57,11 @@ public class Terraformer implements ModInitializer {
 	}
 
 	private static void giveWand(ServerPlayer player) {
-		// Adds to the inventory, or drops at the player's feet if it is full.
-		player.getInventory().placeItemBackInInventory(new ItemStack(ModItems.TERRAFORM_WAND));
+		ItemStack wand = new ItemStack(ModItems.TERRAFORM_WAND);
+		if (!player.getInventory().add(wand)) {
+			// Inventory full: drop it at the player's feet.
+			player.level().addFreshEntity(new ItemEntity(player.level(), player.getX(), player.getY(), player.getZ(), wand));
+		}
 	}
 
 	public static Identifier id(String path) {

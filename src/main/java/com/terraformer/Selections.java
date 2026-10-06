@@ -67,6 +67,11 @@ public final class Selections {
 		UNDO.remove(player);
 	}
 
+	/** Regular chat line, for longer results than the action bar can show. */
+	public static void chat(ServerPlayer player, String text) {
+		player.sendSystemMessage(Component.literal(text), false);
+	}
+
 	public static void actionBar(ServerPlayer player, String text) {
 		player.sendSystemMessage(Component.literal(text), true);
 	}

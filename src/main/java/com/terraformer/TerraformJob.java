@@ -43,9 +43,9 @@ public final class TerraformJob {
 	}
 
 	public record Outcome(String error, int sizeX, int sizeZ, List<Change> changes, int chests, int lostStacks,
-			int protectedColumns) {
+			int protectedColumns, String blockers) {
 		static Outcome fail(String message) {
-			return new Outcome(message, 0, 0, List.of(), 0, 0, 0);
+			return new Outcome(message, 0, 0, List.of(), 0, 0, 0, "");
 		}
 	}
 
@@ -54,6 +54,21 @@ public final class TerraformJob {
 	private final List<Change> changes = new ArrayList<>();
 	private final Map<Item, Integer> removed = new LinkedHashMap<>();
 	private int protectedColumns;
+	/** Which blocks caused columns to be skipped, by registry id (reported so a wrong guess is visible). */
+	private final Map<String, Integer> protectedBy = new LinkedHashMap<>();
+
+	private void protect(BlockState blocker) {
+		protectedColumns++;
+		protectedBy.merge(BuiltInRegistries.BLOCK.getKey(blocker.getBlock()).toString(), 1, Integer::sum);
+	}
+
+	private String topBlockers() {
+		return protectedBy.entrySet().stream()
+			.sorted((a, b) -> b.getValue() - a.getValue())
+			.limit(3)
+			.map(e -> e.getKey() + " x" + e.getValue())
+			.collect(java.util.stream.Collectors.joining(", "));
+	}
 
 	private TerraformJob(ServerLevel level) {
 		this.level = level;
@@ -86,7 +101,8 @@ public final class TerraformJob {
 		}
 
 		int[] chestResult = job.placeChests(minX, maxX, minZ, maxZ, levelY);
-		return new Outcome(null, sizeX, sizeZ, job.changes, chestResult[0], chestResult[1], job.protectedColumns);
+		return new Outcome(null, sizeX, sizeZ, job.changes, chestResult[0], chestResult[1], job.protectedColumns,
+			job.topBlockers());
 	}
 
 	private void processColumn(int x, int z, int levelY, int allowed) {
@@ -111,10 +127,16 @@ public final class TerraformJob {
 					if (isNaturalTerrain(state, false)) {
 						ground = g;
 						groundState = state;
+					} else {
+						protect(state);
+						return;
 					}
 					break;
 				}
-			} else if (isNaturalTerrain(here, false)) {
+			} else if (!isNaturalTerrain(here, false)) {
+				protect(here);
+				return;
+			} else {
 				// Inside rock: walk up to the first opening, or to the headroom limit.
 				int g = y;
 				while (g + 1 < cap) {
@@ -127,11 +149,8 @@ public final class TerraformJob {
 				ground = g;
 				groundState = level.getBlockState(pos.set(x, g, z));
 			}
-			if (groundState == null || !isNaturalTerrain(groundState, false)) {
-				if (ground >= minY) {
-					protectedColumns++;
-				}
-				return;
+			if (groundState == null) {
+				return; // void column
 			}
 			top = ground + 1;
 			while (top < cap && isPassable(pos.set(x, top, z), level.getBlockState(pos))) {
@@ -153,7 +172,7 @@ public final class TerraformJob {
 					ground = y;
 					groundState = state;
 				} else {
-					protectedColumns++;
+					protect(state);
 				}
 				break;
 			}
@@ -177,7 +196,7 @@ public final class TerraformJob {
 			BlockPos p = pos.set(x, y, z);
 			BlockState state = level.getBlockState(p);
 			if (!isPassable(p, state) && !isNaturalTerrain(state, true)) {
-				protectedColumns++;
+				protect(state);
 				return;
 			}
 		}
@@ -222,6 +241,16 @@ public final class TerraformJob {
 			// Leaves placed by a player are persistent; ones grown by a tree are not.
 			return !(state.hasProperty(BlockStateProperties.PERSISTENT) && state.getValue(BlockStateProperties.PERSISTENT));
 		}
+		if (state.is(BlockTags.FLOWERS) || state.is(BlockTags.SAPLINGS) || state.is(BlockTags.SNOW)
+				|| state.is(Blocks.SNOW) || state.is(Blocks.VINE) || state.is(Blocks.LILY_PAD)
+				|| state.is(Blocks.BROWN_MUSHROOM) || state.is(Blocks.RED_MUSHROOM)
+				|| state.is(Blocks.SWEET_BERRY_BUSH) || state.is(Blocks.CACTUS) || state.is(Blocks.SUGAR_CANE)
+				|| state.is(Blocks.BAMBOO) || state.is(Blocks.BAMBOO_SAPLING) || state.is(Blocks.DEAD_BUSH)
+				|| state.is(Blocks.PUMPKIN) || state.is(Blocks.MELON) || state.is(Blocks.MOSS_CARPET)
+				|| state.is(Blocks.GLOW_LICHEN) || state.is(Blocks.BROWN_MUSHROOM_BLOCK)
+				|| state.is(Blocks.RED_MUSHROOM_BLOCK) || state.is(Blocks.MUSHROOM_STEM)) {
+			return true;
+		}
 		return state.is(BlockTags.LOGS) && isTreeLog(p);
 	}
 
@@ -254,6 +283,15 @@ public final class TerraformJob {
 			return true;
 		}
 		Block block = state.getBlock();
+		// Explicit list as well as the tags above, in case a tag does not contain what is expected.
+		if (block == Blocks.GRASS_BLOCK || block == Blocks.DIRT || block == Blocks.COARSE_DIRT
+				|| block == Blocks.PODZOL || block == Blocks.MYCELIUM || block == Blocks.ROOTED_DIRT
+				|| block == Blocks.SAND || block == Blocks.RED_SAND || block == Blocks.STONE
+				|| block == Blocks.DEEPSLATE || block == Blocks.GRANITE || block == Blocks.DIORITE
+				|| block == Blocks.ANDESITE || block == Blocks.TUFF || block == Blocks.NETHERRACK
+				|| block == Blocks.BASALT || block == Blocks.BLACKSTONE) {
+			return true;
+		}
 		if (block == Blocks.GRAVEL || block == Blocks.CLAY || block == Blocks.SNOW_BLOCK
 				|| block == Blocks.POWDER_SNOW || block == Blocks.ICE || block == Blocks.PACKED_ICE
 				|| block == Blocks.BLUE_ICE || block == Blocks.MUD || block == Blocks.MOSS_BLOCK
